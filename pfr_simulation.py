@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import argparse
 import os
+import json
 import matplotlib.pyplot as plt
 
 def F_x(propylene_conc, params):
@@ -94,27 +95,41 @@ def plot_results(df, output_path):
 
 def main():
     parser = argparse.ArgumentParser(description="PFR Deactivation Simulation")
-    parser.add_argument('--segments', type=int, default=100, help="Number of reactor segments for simulation.")
-    parser.add_argument('--length', type=float, default=1.0, help="Total reactor length.")
-    parser.add_argument('--k_reaction', type=float, default=5.0, help="Reaction rate constant.")
-    parser.add_argument('--k_deactivation', type=float, default=1.0, help="Deactivation rate constant (k_d).")
-    parser.add_argument('--output_dir', type=str, default="results", help="Directory to save outputs.")
+    parser.add_argument('--config', type=str, default='config/default.json', help="Path to config file.")
+    parser.add_argument('--segments', type=int, default=None, help="Number of reactor segments for simulation.")
+    parser.add_argument('--length', type=float, default=None, help="Total reactor length.")
+    parser.add_argument('--k_reaction', type=float, default=None, help="Reaction rate constant.")
+    parser.add_argument('--k_deactivation', type=float, default=None, help="Deactivation rate constant (k_d).")
+    parser.add_argument('--output_dir', type=str, default=None, help="Directory to save outputs.")
     args = parser.parse_args()
+
+    # Load params from config file
+    with open(args.config, 'r') as f:
+        config_params = json.load(f)
     
-    os.makedirs(args.output_dir, exist_ok=True)
+    params = {**config_params['simulation_params'], **config_params['model_params']}
+
+    # Override params with command line arguments if provided
+    if args.segments is not None:
+        params['num_segments'] = args.segments
+    if args.length is not None:
+        params['total_length'] = args.length
+    if args.k_reaction is not None:
+        params['k_reaction'] = args.k_reaction
+    if args.k_deactivation is not None:
+        params['k_d'] = args.k_deactivation
     
-    params = {
-        'num_segments': args.segments, 'total_length': args.length,
-        'initial_x': 1.0, 'initial_lambda': 1.0, 'k_d': args.k_deactivation,
-        'iC4_conc': 10.0, 'x_k_T': 1.0, 'k_reaction': args.k_reaction
-    }
+    output_dir = args.output_dir if args.output_dir is not None else config_params['output_params']['output_dir']
+    plot_filename = config_params['output_params']['plot_filename']
+    
+    os.makedirs(output_dir, exist_ok=True)
     
     results = run_pfr_simulation(params)
     
     print("\n--- Simulation Complete ---")
     print(results.tail())
     
-    plot_results(results, os.path.join(args.output_dir, "pfr_profile.png"))
+    plot_results(results, os.path.join(output_dir, plot_filename))
 
 if __name__ == "__main__":
     main()
