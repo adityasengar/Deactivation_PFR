@@ -69,7 +69,7 @@ def run_pfr_simulation(params):
         'catalyst_activity': activity_profile
     })
 
-def plot_results(df, output_path):
+def plot_results(df, params, output_path):
     """
     Plots the simulation results.
     """
@@ -88,7 +88,11 @@ def plot_results(df, output_path):
     ax2.plot(df['reactor_length'], df['catalyst_activity'], color=color)
     ax2.tick_params(axis='y', labelcolor=color)
 
-    plt.title('PFR Concentration and Activity Profiles')
+    title = (
+        'PFR Concentration and Activity Profiles\n'
+        f"$k_{{reaction}} = {params.get('k_reaction')}$, $k_{{d}} = {params.get('k_d')}$"
+    )
+    plt.title(title)
     fig.tight_layout()
     plt.savefig(output_path)
     print(f"Plot saved to {output_path}")
@@ -129,7 +133,7 @@ def main():
     print("\n--- Simulation Complete ---")
     print(results.tail())
     
-    plot_results(results, os.path.join(output_dir, plot_filename))
+    plot_results(results, params, os.path.join(output_dir, plot_filename))
 
 if __name__ == "__main__":
     main()
