@@ -27,12 +27,30 @@ def d_lambda_dz(activity, propylene_conc, params):
 
 def d_propylene_conc_dz(activity, propylene_conc, params):
     """
-    Calculates the spatial derivative of the normalized propylene concentration.
-    This is a simplified model for the reaction rate.
-    dx/dz = -k_reaction * lambda * x
+    Calculates the spatial derivative of the normalized propylene concentration
+    using the 1MARI model.
+    dx/dz' = -x*λ₁ - x²*λ₁*ξ_m / x₀
     """
     k_reaction = params.get('k_reaction', 10.0)
-    return -k_reaction * activity * propylene_conc
+    xi_m = params.get('xi_m', 2.0)
+    initial_x = params.get('initial_x', 1.0)
+    
+    lambda_1 = activity  # λ₁ is the catalyst activity
+    x = propylene_conc
+    x0 = initial_x
+
+    # The paper uses lambda_1 for the reaction rate constant, so we use k_reaction as lambda_1
+    # For simplification, we can consider k_reaction in the script to be equivalent to the λ₁ factor in the paper's equations.
+    # However, the paper's lambda1 is also the activity. The dx/dz depends on lambda1.
+    # So the equation should be:
+    # dx/dz = -k_reaction * activity * x - k_reaction * activity * xi_m * x**2 / x0
+    # Let's assume k_reaction from the script is the same as the reaction rate constant in the paper.
+    # The equation in the paper is dx/dz' = -x*lambda_1 - x^2*lambda_1*xi_m/x_o
+    # Here lambda_1 is the dimensionless proton site concentration. So it's the activity.
+
+    term1 = -activity * x
+    term2 = -activity * xi_m * x**2 / x0
+    return k_reaction * (term1 + term2)
 
 def run_pfr_simulation(params):
     """
@@ -45,6 +63,7 @@ def run_pfr_simulation(params):
     # Initial conditions
     x0 = params.get('initial_x', 1.0)
     lambda0 = params.get('initial_lambda', 1.0)
+    params['initial_x'] = x0 # Ensure it's in the params for d_propylene_conc_dz
 
     # Profiles along the reactor
     z_profile = np.linspace(0, total_length, num_segments + 1)
@@ -89,8 +108,8 @@ def plot_results(df, params, output_path):
     ax2.tick_params(axis='y', labelcolor=color)
 
     title = (
-        'PFR Concentration and Activity Profiles\n'
-        f"$k_{{reaction}} = {params.get('k_reaction')}$, $k_{{d}} = {params.get('k_d')}$"
+        'PFR Concentration and Activity Profiles (1MARI Model)\n'
+        f"$k_{{reaction}} = {params.get('k_reaction')}$, $k_{{d}} = {params.get('k_d')}$, $\xi_m = {params.get('xi_m')}$"
     )
     plt.title(title)
     fig.tight_layout()
@@ -104,6 +123,7 @@ def main():
     parser.add_argument('--length', type=float, default=None, help="Total reactor length.")
     parser.add_argument('--k_reaction', type=float, default=None, help="Reaction rate constant.")
     parser.add_argument('--k_deactivation', type=float, default=None, help="Deactivation rate constant (k_d).")
+    parser.add_argument('--xi_m', type=float, default=None, help="xi_m parameter for 1MARI model.")
     parser.add_argument('--output_dir', type=str, default=None, help="Directory to save outputs.")
     args = parser.parse_args()
 
@@ -122,6 +142,8 @@ def main():
         params['k_reaction'] = args.k_reaction
     if args.k_deactivation is not None:
         params['k_d'] = args.k_deactivation
+    if args.xi_m is not None:
+        params['xi_m'] = args.xi_m
     
     output_dir = args.output_dir if args.output_dir is not None else config_params['output_params']['output_dir']
     plot_filename = config_params['output_params']['plot_filename']

@@ -9,7 +9,8 @@
         "k_d": 1.0,
         "iC4_conc": 10.0,
         "x_k_T": 1.0,
-        "k_reaction": 5.0
+        "k_reaction": 5.0,
+        "xi_m": 2.0
     },
     "output_params": {
         "output_dir": "results",
