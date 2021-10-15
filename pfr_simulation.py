@@ -4,158 +4,168 @@ import argparse
 import os
 import json
 import matplotlib.pyplot as plt
-
-def F_x(propylene_conc, params):
-    """
-    Calculates an intermediate term for the deactivation rate expression.
-    """
-    k_d = params.get('k_d', 1.0)
-    iC4_conc = params.get('iC4_conc', 1.0)
-    x_k_T = params.get('x_k_T', 1.0)
-    return (k_d / iC4_conc) * (x_k_T + propylene_conc)
-
-def d_lambda_dz(activity, propylene_conc, params):
-    """
-    Calculates the spatial derivative of the fraction of active sites (lambda).
-    This is a simplified model for catalyst deactivation along the reactor length.
-    d(lambda)/dz = -F_x * lambda * (C_oligomer / C_iC4)
-    """
-    # Assuming oligomer concentration is proportional to propylene concentration
-    oligomer_conc = propylene_conc * 0.1 
-    iC4_conc = params.get('iC4_conc', 1.0)
-    return -F_x(propylene_conc, params) * activity * (oligomer_conc / iC4_conc)
+import matplotlib.animation as animation
 
 def d_propylene_conc_dz(activity, propylene_conc, params):
     """
     Calculates the spatial derivative of the normalized propylene concentration
     using the 1MARI model.
-    dx/dz' = -x*λ₁ - x²*λ₁*ξ_m / x₀
+    dx/dz' = -k_reaction * (x*λ₁ + x²*λ₁*ξ_m / x₀)
     """
-    k_reaction = params.get('k_reaction', 10.0)
+    k_reaction = params.get('k_reaction', 5.0)
     xi_m = params.get('xi_m', 2.0)
     initial_x = params.get('initial_x', 1.0)
     
-    lambda_1 = activity  # λ₁ is the catalyst activity
     x = propylene_conc
     x0 = initial_x
-
-    # The paper uses lambda_1 for the reaction rate constant, so we use k_reaction as lambda_1
-    # For simplification, we can consider k_reaction in the script to be equivalent to the λ₁ factor in the paper's equations.
-    # However, the paper's lambda1 is also the activity. The dx/dz depends on lambda1.
-    # So the equation should be:
-    # dx/dz = -k_reaction * activity * x - k_reaction * activity * xi_m * x**2 / x0
-    # Let's assume k_reaction from the script is the same as the reaction rate constant in the paper.
-    # The equation in the paper is dx/dz' = -x*lambda_1 - x^2*lambda_1*xi_m/x_o
-    # Here lambda_1 is the dimensionless proton site concentration. So it's the activity.
 
     term1 = -activity * x
     term2 = -activity * xi_m * x**2 / x0
     return k_reaction * (term1 + term2)
 
-def run_pfr_simulation(params):
+def solve_pfr_profile(activity_profile, params):
     """
-    Runs the Plug Flow Reactor (PFR) simulation.
+    Solves the PFR profile for a given catalyst activity profile.
     """
     num_segments = params.get('num_segments', 100)
     total_length = params.get('total_length', 1.0)
     dz = total_length / num_segments
-
-    # Initial conditions
     x0 = params.get('initial_x', 1.0)
-    lambda0 = params.get('initial_lambda', 1.0)
-    params['initial_x'] = x0 # Ensure it's in the params for d_propylene_conc_dz
 
-    # Profiles along the reactor
     z_profile = np.linspace(0, total_length, num_segments + 1)
     propylene_profile = np.zeros(num_segments + 1)
-    activity_profile = np.zeros(num_segments + 1)
-    
     propylene_profile[0] = x0
-    activity_profile[0] = lambda0
     
-    print("Running PFR simulation...")
-    # Integrate along the reactor length using Euler's method
     for i in range(num_segments):
         dx_dz = d_propylene_conc_dz(activity_profile[i], propylene_profile[i], params)
-        dlambda_dz = d_lambda_dz(activity_profile[i], propylene_profile[i], params) 
-        
         propylene_profile[i+1] = propylene_profile[i] + dx_dz * dz
-        activity_profile[i+1] = activity_profile[i] + dlambda_dz * dz
         
-    return pd.DataFrame({
-        'reactor_length': z_profile,
-        'propylene_concentration': propylene_profile,
-        'catalyst_activity': activity_profile
-    })
+    return z_profile, propylene_profile
 
-def plot_results(df, params, output_path):
+def update_activity(activity_profile, propylene_profile, params):
     """
-    Plots the simulation results.
+    Updates the catalyst activity profile over a time step dt.
+    Uses a simple first-order deactivation model: d(lambda)/dt = -k_d * lambda.
     """
-    print(f"Generating plot to {output_path}...")
+    dt = params.get('dt', 0.1)
+    k_d = params.get('k_d', 1.0)
+    
+    d_lambda_dt = -k_d * activity_profile
+    new_activity_profile = activity_profile + d_lambda_dt * dt
+    return new_activity_profile
+
+def run_time_dependent_simulation(params):
+    """
+    Runs the time-dependent PFR simulation.
+    """
+    num_segments = params.get('num_segments', 100)
+    total_length = params.get('total_length', 1.0)
+    lambda0 = params.get('initial_lambda', 1.0)
+    t_final = params.get('t_final', 2.0)
+    dt = params.get('dt', 0.1)
+
+    activity_profile = np.full(num_segments + 1, lambda0)
+    
+    time_points = np.arange(0, t_final, dt)
+    results_over_time = []
+
+    print("Running time-dependent PFR simulation...")
+    for t in time_points:
+        z_profile, propylene_profile = solve_pfr_profile(activity_profile, params)
+        
+        results_over_time.append({
+            'time': t,
+            'reactor_length': z_profile,
+            'propylene_concentration': propylene_profile,
+            'catalyst_activity': activity_profile.copy()
+        })
+
+        activity_profile = update_activity(activity_profile, propylene_profile, params)
+
+    return results_over_time
+
+def plot_animation(results_over_time, params, output_path):
+    """
+    Creates an animation of the simulation results.
+    """
+    print(f"Generating animation to {output_path}...")
     fig, ax1 = plt.subplots(figsize=(10, 6))
     
-    color = 'tab:red'
     ax1.set_xlabel("Reactor Length (z')")
+    
+    color = 'tab:red'
     ax1.set_ylabel('Normalized Propylene Concentration', color=color)
-    ax1.plot(df['reactor_length'], df['propylene_concentration'], color=color)
+    line1, = ax1.plot([], [], color=color, label='Propylene Conc.')
     ax1.tick_params(axis='y', labelcolor=color)
+    ax1.set_ylim(0, params.get('initial_x', 1.0) * 1.1)
 
     ax2 = ax1.twinx()
     color = 'tab:blue'
     ax2.set_ylabel('Fraction of Active Sites (λ)', color=color)
-    ax2.plot(df['reactor_length'], df['catalyst_activity'], color=color)
+    line2, = ax2.plot([], [], color=color, label='Catalyst Activity')
     ax2.tick_params(axis='y', labelcolor=color)
+    ax2.set_ylim(0, params.get('initial_lambda', 1.0) * 1.1)
 
-    title = (
-        'PFR Concentration and Activity Profiles (1MARI Model)\n'
-        f"$k_{{reaction}} = {params.get('k_reaction')}$, $k_{{d}} = {params.get('k_d')}$, $\xi_m = {params.get('xi_m')}$"
-    )
-    plt.title(title)
-    fig.tight_layout()
-    plt.savefig(output_path)
-    print(f"Plot saved to {output_path}")
+    title = ax1.text(0.5, 1.05, '', transform=ax1.transAxes, ha="center")
+    
+    ax1.set_xlim(0, params.get('total_length', 1.0))
+
+    def init():
+        line1.set_data([], [])
+        line2.set_data([], [])
+        title.set_text('')
+        return line1, line2, title
+
+    def animate(i):
+        data = results_over_time[i]
+        line1.set_data(data['reactor_length'], data['propylene_concentration'])
+        line2.set_data(data['reactor_length'], data['catalyst_activity'])
+        title.set_text(f'PFR Profiles at t = {data["time"]:.2f}')
+        return line1, line2, title
+
+    ani = animation.FuncAnimation(fig, animate, frames=len(results_over_time),
+                                  init_func=init, blit=True, interval=200)
+    
+    ani.save(output_path, writer='imagemagick')
+    print(f"Animation saved to {output_path}")
 
 def main():
     parser = argparse.ArgumentParser(description="PFR Deactivation Simulation")
     parser.add_argument('--config', type=str, default='config/default.json', help="Path to config file.")
-    parser.add_argument('--segments', type=int, default=None, help="Number of reactor segments for simulation.")
-    parser.add_argument('--length', type=float, default=None, help="Total reactor length.")
-    parser.add_argument('--k_reaction', type=float, default=None, help="Reaction rate constant.")
-    parser.add_argument('--k_deactivation', type=float, default=None, help="Deactivation rate constant (k_d).")
-    parser.add_argument('--xi_m', type=float, default=None, help="xi_m parameter for 1MARI model.")
-    parser.add_argument('--output_dir', type=str, default=None, help="Directory to save outputs.")
+    # Add other arguments to override config file, setting defaults to None
+    args_list = {
+        'segments': int, 'length': float, 't_final': float, 'dt': float,
+        'k_reaction': float, 'k_deactivation': float, 'xi_m': float,
+        'output_dir': str
+    }
+    for arg, arg_type in args_list.items():
+        parser.add_argument(f'--{arg}', type=arg_type, default=None)
+
     args = parser.parse_args()
 
-    # Load params from config file
     with open(args.config, 'r') as f:
         config_params = json.load(f)
     
-    params = {**config_params['simulation_params'], **config_params['model_params']}
+    params = {**config_params.get('simulation_params', {}), **config_params.get('model_params', {})}
 
-    # Override params with command line arguments if provided
-    if args.segments is not None:
-        params['num_segments'] = args.segments
-    if args.length is not None:
-        params['total_length'] = args.length
-    if args.k_reaction is not None:
-        params['k_reaction'] = args.k_reaction
-    if args.k_deactivation is not None:
-        params['k_d'] = args.k_deactivation
-    if args.xi_m is not None:
-        params['xi_m'] = args.xi_m
-    
-    output_dir = args.output_dir if args.output_dir is not None else config_params['output_params']['output_dir']
-    plot_filename = config_params['output_params']['plot_filename']
+    if args.segments: params['num_segments'] = args.segments
+    if args.length: params['total_length'] = args.length
+    if args.t_final: params['t_final'] = args.t_final
+    if args.dt: params['dt'] = args.dt
+    if args.k_reaction: params['k_reaction'] = args.k_reaction
+    if args.k_deactivation: params['k_d'] = args.k_deactivation
+    if args.xi_m: params['xi_m'] = args.xi_m
+
+    output_dir = args.output_dir or config_params.get('output_params', {}).get('output_dir', 'results')
+    plot_filename = config_params.get('output_params', {}).get('plot_filename', 'pfr_profile_animated.gif')
     
     os.makedirs(output_dir, exist_ok=True)
     
-    results = run_pfr_simulation(params)
+    results = run_time_dependent_simulation(params)
     
     print("\n--- Simulation Complete ---")
-    print(results.tail())
     
-    plot_results(results, params, os.path.join(output_dir, plot_filename))
+    plot_animation(results, params, os.path.join(output_dir, plot_filename))
 
 if __name__ == "__main__":
     main()

@@ -3,7 +3,9 @@
         "num_segments": 100,
         "total_length": 1.0,
         "initial_x": 1.0,
-        "initial_lambda": 1.0
+        "initial_lambda": 1.0,
+        "t_final": 2.0,
+        "dt": 0.1
     },
     "model_params": {
         "k_d": 1.0,
@@ -14,6 +16,6 @@
     },
     "output_params": {
         "output_dir": "results",
-        "plot_filename": "pfr_profile.png"
+        "plot_filename": "pfr_profile_animated.gif"
     }
 }
