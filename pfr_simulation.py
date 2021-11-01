@@ -45,13 +45,16 @@ def solve_pfr_profile(activity_profile, params):
 def update_activity(activity_profile, propylene_profile, params):
     """
     Updates the catalyst activity profile over a time step dt.
-    Uses a simple first-order deactivation model: d(lambda)/dt = -k_d * lambda.
+    Uses a propylene-dependent deactivation model: d(lambda)/dt = -k_d * lambda * x.
     """
     dt = params.get('dt', 0.1)
     k_d = params.get('k_d', 1.0)
     
-    d_lambda_dt = -k_d * activity_profile
+    # Deactivation rate depends on local propylene concentration
+    d_lambda_dt = -k_d * activity_profile * propylene_profile
     new_activity_profile = activity_profile + d_lambda_dt * dt
+    # Ensure activity doesn't go below zero
+    new_activity_profile[new_activity_profile < 0] = 0
     return new_activity_profile
 
 def run_time_dependent_simulation(params):
