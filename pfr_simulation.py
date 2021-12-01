@@ -133,9 +133,20 @@ def plot_animation(results_over_time, params, output_path):
     print(f"Animation saved to {output_path}")
 
 def main():
+    params, output_dir, plot_filename = load_config_and_parse_args()
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    results = run_time_dependent_simulation(params)
+    
+    print("\n--- Simulation Complete ---")
+    
+    plot_animation(results, params, os.path.join(output_dir, plot_filename))
+
+def load_config_and_parse_args():
     parser = argparse.ArgumentParser(description="PFR Deactivation Simulation")
     parser.add_argument('--config', type=str, default='config/default.json', help="Path to config file.")
-    # Add other arguments to override config file, setting defaults to None
+    
     args_list = {
         'segments': int, 'length': float, 't_final': float, 'dt': float,
         'k_reaction': float, 'k_deactivation': float, 'xi_m': float,
@@ -151,24 +162,18 @@ def main():
     
     params = {**config_params.get('simulation_params', {}), **config_params.get('model_params', {})}
 
-    if args.segments: params['num_segments'] = args.segments
-    if args.length: params['total_length'] = args.length
-    if args.t_final: params['t_final'] = args.t_final
-    if args.dt: params['dt'] = args.dt
-    if args.k_reaction: params['k_reaction'] = args.k_reaction
-    if args.k_deactivation: params['k_d'] = args.k_deactivation
-    if args.xi_m: params['xi_m'] = args.xi_m
+    for arg in args_list:
+        if getattr(args, arg) is not None:
+            if arg == 'k_deactivation':
+                params['k_d'] = getattr(args, arg)
+            else:
+                params[arg] = getattr(args, arg)
 
     output_dir = args.output_dir or config_params.get('output_params', {}).get('output_dir', 'results')
     plot_filename = config_params.get('output_params', {}).get('plot_filename', 'pfr_profile_animated.gif')
-    
-    os.makedirs(output_dir, exist_ok=True)
-    
-    results = run_time_dependent_simulation(params)
-    
-    print("\n--- Simulation Complete ---")
-    
-    plot_animation(results, params, os.path.join(output_dir, plot_filename))
+
+    return params, output_dir, plot_filename
+
 
 if __name__ == "__main__":
     main()
