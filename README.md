@@ -41,3 +41,5 @@ The simulation models the evolution of propylene concentration and catalyst acti
 ## Output
 
 The simulation generates an animated GIF file (e.g., `results/pfr_profile_animated.gif`) showing the evolution of the concentration and activity profiles over time.
+
+# Updated on 2026-01-09
